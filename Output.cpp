@@ -5,14 +5,35 @@
 #include "MultiWii.h"
 #include "Alarms.h"
 
-uint8_t PWM_PIN[8] = {9,10,11,3,6,5,A2,12};   
+uint8_t PWM_PIN[8] = {9,10,11,3,6,5,A2,12};   // 前四个硬件电机 后四个软件模拟PWM舵机
+volatile uint8_t atomicServo[4] = {125,125,125,125};
+
+void initializeServo();
+
+// 当前机型仍然为四旋翼 底层封装由Promini确定而确定
+#define SERVO_3_HIGH SERVO_3_PIN_HIGH
+#define SERVO_3_LOW SERVO_3_PIN_LOW
+#define SERVO_3_ARR_POS  2
+
+#define SERVO_4_HIGH SERVO_4_PIN_HIGH
+#define SERVO_4_LOW SERVO_4_PIN_LOW
+#define SERVO_4_ARR_POS  3
 
 
-void writeMotors() { 
+
+
+
+// 直接向电机写入 比较寄存器的值
+void writeMotorsServos() { 
     OCR1A = motor[0]>>3; //  pin 9
-    OCR1B = motor[1]>>3; //  pin 10
-    OCR2A = motor[2]>>3; //  pin 11
-    OCR2B = motor[3]>>3; //  pin 3
+    //OCR1B = motor[1]>>3; //  pin 10
+    //OCR2A = motor[2]>>3; //  pin 11
+    //OCR2B = motor[3]>>3; //  pin 3
+
+    for(uint8_t i = 0; i < 4; i++){
+      atomicServo[i] = (servo[i]-1000)>>2;
+      // 将[0,1000]舵量映射到[0,250]
+    }
 }
 
 
@@ -21,7 +42,7 @@ void writeAllMotors(int16_t mc) {
   for (uint8_t i =0;i<NUMBER_MOTOR;i++) {
     motor[i]=mc;
   }
-  writeMotors();//将舵量写入电机
+  writeMotorsServos();//将舵量写入电机
 }
 
 
@@ -31,13 +52,91 @@ void initOutput() {
     pinMode(PWM_PIN[i],OUTPUT);
   }
   TCCR1A |= _BV(COM1A1); // connect pin 9 to timer 1 channel A
-  TCCR1A |= _BV(COM1B1); // connect pin 10 to timer 1 channel B
-  TCCR2A |= _BV(COM2A1); // connect pin 11 to timer 2 channel A
-  TCCR2A |= _BV(COM2B1); // connect pin 3 to timer 2 channel B
+  //TCCR1A |= _BV(COM1B1); // connect pin 10 to timer 1 channel B
+  //TCCR2A |= _BV(COM2A1); // connect pin 11 to timer 2 channel A
+  //TCCR2A |= _BV(COM2B1); // connect pin 3 to timer 2 channel B
   
+  
+  // 电机写入最小指令
   writeAllMotors(MINCOMMAND);
   delay(300);
+
+  // 初始化舵机
+  initializeServo();
+  
 }
+
+
+
+
+void initializeServo() {
+
+  // 初始化舵机为输出模式
+  SERVO_1_PINMODE;
+  SERVO_2_PINMODE;
+  SERVO_3_PINMODE;
+  SERVO_4_PINMODE;
+
+
+  // uses timer 0 Comperator A (8 bit)
+  // 初始化计时器
+  TCCR0A = 0; // normal counting mode
+  TIMSK0 |= (1<<OCIE0A); // Enable CTC interrupt
+  // 计数到达比较值 进入中断
+  #define SERVO_ISR TIMER0_COMPA_vect
+  #define SERVO_CHANNEL OCR0A
+  #define SERVO_1K_US 250
+
+  
+}
+  
+
+
+
+
+// 封装宏: 前一个舵机信号线拉低->当前舵机信号线拉高->当前高电平延时1ms->再写入延时0~1ms舵量信号
+#define SERVO_PULSE(PIN_HIGH,ACT_STATE,SERVO_NUM,LAST_PIN_LOW) \
+    }else if(state == ACT_STATE){                                \
+      LAST_PIN_LOW;                                              \
+      PIN_HIGH;                                                  \
+      SERVO_CHANNEL+=SERVO_1K_US;                                \
+      state++;                                                   \
+    }else if(state == ACT_STATE+1){                              \
+      SERVO_CHANNEL+=atomicServo[SERVO_NUM];                     \
+      state++;
+
+
+
+
+// 计数器触发中断服务函数
+ISR(SERVO_ISR) {
+    static uint8_t state = 0; // indicates the current state of the chain
+    if(state == 0){
+      SERVO_1_HIGH; // set servo 1's pin high 
+      SERVO_CHANNEL+=SERVO_1K_US; // wait 1000us
+      state++; // count up the state
+    }
+    else if(state==1){
+      SERVO_CHANNEL+=atomicServo[SERVO_1_ARR_POS]; // load the servo's value (0-1000us)
+      state++; // count up the state
+      
+      SERVO_PULSE(SERVO_2_HIGH,2,SERVO_2_ARR_POS,SERVO_1_LOW); // the same here
+      // 下面这两个需要定义
+      SERVO_PULSE(SERVO_3_PIN_HIGH,4,SERVO_3_ARR_POS,SERVO_2_LOW);
+      SERVO_PULSE(SERVO_4_PIN_HIGH,6,SERVO_4_ARR_POS,SERVO_3_LOW);
+    }
+    else{// 最后延时达到50Hz
+      LAST_LOW;
+      SERVO_CHANNEL+=SERVO_1K_US;
+      if(state<30){
+        state+=2;
+      }else{
+          state=0;
+      }
+    }
+}
+
+      
 
 
 
@@ -51,6 +150,8 @@ void mixTable() {
   motor[3] = PIDMIX(+1,-1,-1); //FRONT_L
 
   maxMotor=motor[0];
+
+  // 对电机限幅
     for(i=1; i< NUMBER_MOTOR; i++)
       if (motor[i]>maxMotor) 
       maxMotor=motor[i];//找到最大舵量的电机
@@ -64,6 +165,22 @@ void mixTable() {
       if (!f.ARMED)
         motor[i] = MINCOMMAND;
     }
+
+  // 舵机输出舵量
+    if(f.PASSTHRU_MODE){   // Direct passthru from RX
+      servo[0] = rcCommand[ROLL];                     //   Wing 1
+      servo[1] = rcCommand[ROLL];                     //   Wing 2
+      servo[2] = rcCommand[YAW];                      //   Rudder
+      servo[3] = rcCommand[PITCH];                    //   Elevator
+    }else{
+      // Assisted modes 
+      servo[0] = axisPID[ROLL];                    //   Wing 1
+      servo[1] = axisPID[ROLL];                    //   Wing 2
+      servo[2] = axisPID[YAW];                    //   Rudder
+      servo[3] = axisPID[PITCH];                  //   Elevator
+    }
+
+    
 }
 
 

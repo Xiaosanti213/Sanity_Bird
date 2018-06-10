@@ -495,7 +495,7 @@ if (f.GPS_HOLD_MODE) {
 	
 	
 	mixTable();
-	writeMotors();
+	writeMotorsServos();
 	
 }	
 

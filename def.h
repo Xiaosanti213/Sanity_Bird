@@ -322,7 +322,9 @@
   #define RX_PCINT_PIN_PORT          PIND
   #define V_BATPIN                   A3    // Analog PIN 3
   #define PSENSORPIN                 A2    // Analog PIN 2
-  
+
+
+// 软件模拟PWM信号控制电机
   #if defined(A0_A1_PIN_HEX) || (NUMBER_MOTOR > 6)
     #define SOFT_PWM_1_PIN_HIGH        PORTC |= 1<<0;
     #define SOFT_PWM_1_PIN_LOW         PORTC &= ~(1<<0);
@@ -338,21 +340,34 @@
   #define SOFT_PWM_3_PIN_LOW         PORTC &= ~(1<<2);
   #define SOFT_PWM_4_PIN_HIGH        PORTB |= 1<<4;
   #define SOFT_PWM_4_PIN_LOW         PORTB &= ~(1<<4);
-  
-  #define SERVO_1_PINMODE            pinMode(A0,OUTPUT); // TILT_PITCH - WING left
+
+
+
+
+
+  ////////////////////////////////////////舵机引脚初始化//////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////////////
+  #define SERVO_1_PINMODE            pinMode(A0,OUTPUT); //  WING left
   #define SERVO_1_PIN_HIGH           PORTC |= 1<<0;
   #define SERVO_1_PIN_LOW            PORTC &= ~(1<<0);
-  #define SERVO_2_PINMODE            pinMode(A1,OUTPUT); // TILT_ROLL  - WING right
+  #define SERVO_2_PINMODE            pinMode(A1,OUTPUT); //  WING right
   #define SERVO_2_PIN_HIGH           PORTC |= 1<<1;
   #define SERVO_2_PIN_LOW            PORTC &= ~(1<<1);
-  #define SERVO_3_PINMODE            pinMode(A2,OUTPUT); // CAM TRIG  - alt TILT_PITCH
+  #define SERVO_3_PINMODE            pinMode(A2,OUTPUT); // Elevator
   #define SERVO_3_PIN_HIGH           PORTC |= 1<<2;
   #define SERVO_3_PIN_LOW            PORTC &= ~(1<<2);
-  #if !defined(MONGOOSE1_0)
-    #define SERVO_4_PINMODE            pinMode(12,OUTPUT); // new       - alt TILT_ROLL
+  //#if !defined(MONGOOSE1_0)
+    #define SERVO_4_PINMODE            pinMode(12,OUTPUT); // Rudder
     #define SERVO_4_PIN_HIGH           PORTB |= 1<<4;
     #define SERVO_4_PIN_LOW            PORTB &= ~(1<<4);
-  #endif
+  //#endif
+  ////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+  
   #define SERVO_5_PINMODE            pinMode(11,OUTPUT); // BI LEFT
   #define SERVO_5_PIN_HIGH           PORTB |= 1<<3;
   #define SERVO_5_PIN_LOW            PORTB &= ~(1<<3);

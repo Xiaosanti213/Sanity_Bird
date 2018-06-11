@@ -478,21 +478,7 @@ if (f.GPS_HOLD_MODE) {
     axisPID[axis] =  PTerm + ITerm + DTerm;
 
 
-  
-  if(axis == 0)
-  {
-    debug[0] = PTerm;
-    debug[1] = ITerm;
-  }
-  else if(axis == 2)
-  {
-    debug[2] = PTerm;
-    debug[3] = ITerm;
-  }
 
-
-
-	
 	
 	mixTable();
 	writeMotorsServos();

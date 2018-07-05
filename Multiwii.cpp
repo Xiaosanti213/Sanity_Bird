@@ -162,10 +162,22 @@ int32_t baroPressureSum;
 
 
 
-void annexCode() { //控制点映射舵量曲线
+// 函数在IMU当中调用
+void annexCode() { 
+  // 控制点映射舵量曲线
   static uint32_t calibratedAccTime;
   uint16_t tmp,tmp2;
   uint8_t axis,prop1,prop2;
+
+  // 读模拟电压数据
+  static uint8_t ind = 0;
+  static uint16_t vvec[VBAT_SMOOTH], vsum;
+  uint16_t v = analogRead(V_BATPIN);
+  // debug[1] = v;
+
+  // TODO: 平滑滤波
+  // 转化成角度数据
+  
 
   // PITCH & ROLL 依据当前油门进行动态PID整定
   prop2 = 128; 
@@ -187,13 +199,16 @@ void annexCode() { //控制点映射舵量曲线
       prop1 = (uint16_t)prop1*prop2>>7; // prop1: max is 128   prop2: max is 128   result prop1: max is 128
       dynP8[axis] = (uint16_t)conf.pid[axis].P8*prop1>>7; // was /100, is /128 now
       dynD8[axis] = (uint16_t)conf.pid[axis].D8*prop1>>7; // was /100, is /128 now
-    } else {      // YAW
+    } else {      // YAW 
       rcCommand[axis] = tmp;
     }
     if (rcData[axis]<MIDRC) 
         rcCommand[axis] = -rcCommand[axis];
   }
   
+
+
+  // 油门舵量映射
   tmp = constrain(rcData[THROTTLE],MINCHECK,2000);
   tmp = (uint32_t)(tmp-MINCHECK)*2559/(2000-MINCHECK); // [MINCHECK;2000] -> [0;2559]
   tmp2 = tmp/256; // range [0;9]
@@ -201,11 +216,10 @@ void annexCode() { //控制点映射舵量曲线
   // [0;2559] -> expo -> [conf.minthrottle;MAXTHROTTLE]
 
 
+  // 串口发送数据
   serialCom();
 
-
-
-
+  
   //校准状态等
   if ( (calibratingA>0) || (calibratingG>0) ) { // 进入下次循环，仍需要校准
     LEDPIN_TOGGLE;

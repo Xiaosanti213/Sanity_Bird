@@ -99,18 +99,11 @@ void configureReceiver() {
 	
 uint16_t readRawRC(uint8_t chan) {
   uint16_t data;
-  #if defined(SPEKTRUM)
-    readSpektrum();
-    if (chan < RC_CHANS) {
-      data = rcValue[rcChannel[chan]];
-    } else data = 1500;
-  #else
-    uint8_t oldSREG;
-    oldSREG = SREG; cli();              // 压栈，禁用中断
-    data = rcValue[rcChannel[chan]];    // 原子级别拷贝数据，防止被打断
-    SREG = oldSREG;                     // 恢复中断前状态
-  #endif
-  return data; // 正确地返回禁用中断过程中拷贝的数据
+  uint8_t oldSREG;
+  oldSREG = SREG; cli();              // 压栈，禁用中断
+  data = rcValue[rcChannel[chan]];    // 原子级别拷贝数据，防止被打断
+  SREG = oldSREG;                     // 恢复中断前状态
+  return data;						  // 正确地返回禁用中断过程中拷贝的数据
 }
 	
 	

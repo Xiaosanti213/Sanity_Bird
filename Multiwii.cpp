@@ -13,7 +13,6 @@
 #include "Sensors.h"
 #include "Serial.h"
 #include "Protocol.h"
-#include "GPS.h"
 
 #include <avr/pgmspace.h>
 
@@ -31,69 +30,16 @@ const char pidnames[] PROGMEM =
   "VEL;"
 ;
 
-const char boxnames[] PROGMEM = // names for dynamic generation of config GUI
-  "ARM;"
-  "ANGLE;"
-  "HORIZON;"
-  "BARO;"
-  "MAG;"
-  "HEADFREE;"
-  "HEADADJ;"  
-
-;
-
-const uint8_t boxids[] PROGMEM = {// permanent IDs associated to boxes. This way, you can rely on an ID number to identify a BOX function.
-  0, //"ARM;"
-  1, //"ANGLE;"
-  2, //"HORIZON;"
-  3, //"BARO;"
-  5, //"MAG;"
-  6, //"HEADFREE;"
-  7, //"HEADADJ;"  
-};
-
-
-
-int16_t  magHold,headFreeModeHold; // [-180;+180]
-uint8_t  vbatMin = 0.1;//VBATNOMINAL;  // lowest battery voltage in 0.1V steps
-uint8_t  rcOptions[CHECKBOXITEMS];
 
 
 int16_t rcSerial[8];         // interval [1000;2000] - 串口发送而来的舵量数据
 uint8_t rcSerialCount = 0;   // a counter to select legacy RX when there is no more MSP rc serial data
 
 
-  int16_t  GPS_angle[2] = { 0, 0};                      // the angles that must be applied for GPS correction
-  int32_t  GPS_coord[2];
-  int32_t  GPS_home[2];
-  int32_t  GPS_hold[2];
-  uint8_t  GPS_numSat;
-  uint16_t GPS_distanceToHome;                          // distance to home  - unit: meter
-  int16_t  GPS_directionToHome;                         // direction to home - unit: degree
-  uint16_t GPS_altitude;                                // GPS altitude      - unit: meter
-  uint16_t GPS_speed;                                   // GPS speed         - unit: cm/s
-  uint8_t  GPS_update = 0;                              // a binary toogle to distinct a GPS position update
-  uint16_t GPS_ground_course = 0;                       //                   - unit: degree*10
-  uint8_t  GPS_Present = 0;                             // Checksum from Gps serial
-  uint8_t  GPS_Enable  = 0;
-
-  // The desired bank towards North (Positive) or South (Negative) : latitude
-  // The desired bank towards East (Positive) or West (Negative)   : longitude
-  int16_t  nav[2];
-  int16_t  nav_rated[2];    //Adding a rate controller to the navigation to make it smoother
-
-  uint8_t nav_mode = NAV_MODE_NONE; // Navigation mode
 
 
-  int16_t servo[8] = {1500,1500,1500,1500,1500,1500,1500,1000};
 
-  uint16_t intPowerTrigger1;
-
-  //上面是串口发送需要用到的数据，虽然计算时候没用
-  /**************************************************************************************************************/
-
-
-  
+int16_t servo[8] = { 1500,1500,1500,1500,1500,1500,1500,1000 };
 uint32_t currentTime = 0;
 uint16_t previousTime = 0;
 uint16_t cycleTime = 0;  
@@ -160,25 +106,73 @@ int32_t baroPressure;
 int32_t baroTemperature;
 int32_t baroPressureSum;
 
+uint16_t v;
 
 
-// 函数在IMU当中调用
-void annexCode() { 
-  // 控制点映射舵量曲线
+
+
+
+void annexCode() { //控制点映射舵量曲线
   static uint32_t calibratedAccTime;
   uint16_t tmp,tmp2;
   uint8_t axis,prop1,prop2;
 
-  // 读模拟电压数据
-  static uint8_t ind = 0;
-  static uint16_t vvec[VBAT_SMOOTH], vsum;
-  uint16_t v = analogRead(V_BATPIN);
-  // debug[1] = v;
+  // 计算电机角度和舵机指令映射关系
+  const float ctrl_points[4] = { 74.6740, 197.353, 261.36, 357.37 };//样点索引
 
-  // TODO: 平滑滤波
-  // 转化成角度数据
+  const float coeff01[3] = { 0.0087, -1.1790, 1.2563 };
+  const float coeff12[3] = { -0.0028, 1.1334, -106.7529 };
+  const float coeff23[3] = { 0.0016, -0.4938, 42.0787 };
+  const float coeff34[3] = { -0.0051, 2.9076, -387.0546 };
   
+  float temp_c[3] = { 0,0,0 };
+  u8 i;
+  static int16_t v_pre = -1;
+  float smooth = 1;
 
+  // 1 读A0，并执行平滑滤波
+  v = analogRead(0);
+  if (v == -1)
+	  v_pre = v;
+  else
+	  for (i = 0; i < 3; i++)
+	  {
+		  rcCommand[i] = ((smooth - 1) * v_pre + v) / smooth;
+		  constrain(v, 0, 1024);
+		  v_pre = v;
+	  }
+  // 2 映射成当前的角度
+  float angle_input = float(v) / 1024.0 * 360.0;
+  // 3 计算映射得到的舵机转角
+  constrain(angle_input, 0, 360);
+  if (angle_input <= ctrl_points[0])
+	  for (i = 0; i < 3; i++)
+		  temp_c[i] = coeff01[i];
+  else if (ctrl_points[0] < angle_input && angle_input <= ctrl_points[1])
+	  for (i = 0; i < 3; i++)
+		  temp_c[i] = coeff12[i];
+  else if (ctrl_points[1] < angle_input && angle_input <= ctrl_points[2])
+	  for (i = 0; i < 3; i++)
+		  temp_c[i] = coeff23[i];
+  else
+	  for (i = 0; i < 3; i++)
+		  temp_c[i] = coeff34[i];
+
+  float poly_temp = temp_c[0] * angle_input * angle_input;
+  poly_temp += temp_c[1] * angle_input;
+  poly_temp += temp_c[2];
+
+  debug[2] = angle_input;//输入角度位置
+  debug[3] = poly_temp;//舵机角度指令
+
+  // 4 角度计算舵机控制量0-250对应角度-60-60度？需要校准测量
+  rcCommand[ROLL] = 1500.0 + poly_temp * 1000.0 / 120.0;
+
+ 	  
+
+
+
+  /*
   // PITCH & ROLL 依据当前油门进行动态PID整定
   prop2 = 128; 
   if (rcData[THROTTLE]>1500) { 
@@ -199,27 +193,27 @@ void annexCode() {
       prop1 = (uint16_t)prop1*prop2>>7; // prop1: max is 128   prop2: max is 128   result prop1: max is 128
       dynP8[axis] = (uint16_t)conf.pid[axis].P8*prop1>>7; // was /100, is /128 now
       dynD8[axis] = (uint16_t)conf.pid[axis].D8*prop1>>7; // was /100, is /128 now
-    } else {      // YAW 
+    } else {      // YAW
       rcCommand[axis] = tmp;
     }
     if (rcData[axis]<MIDRC) 
         rcCommand[axis] = -rcCommand[axis];
   }
-  
+  */
 
-
-  // 油门舵量映射
   tmp = constrain(rcData[THROTTLE],MINCHECK,2000);
   tmp = (uint32_t)(tmp-MINCHECK)*2559/(2000-MINCHECK); // [MINCHECK;2000] -> [0;2559]
   tmp2 = tmp/256; // range [0;9]
   rcCommand[THROTTLE] = lookupThrottleRC[tmp2] + (tmp-tmp2*256) * (lookupThrottleRC[tmp2+1]-lookupThrottleRC[tmp2]) / 256; 
   // [0;2559] -> expo -> [conf.minthrottle;MAXTHROTTLE]
+  
 
 
-  // 串口发送数据
   serialCom();
 
-  
+
+
+
   //校准状态等
   if ( (calibratingA>0) || (calibratingG>0) ) { // 进入下次循环，仍需要校准
     LEDPIN_TOGGLE;
@@ -237,6 +231,10 @@ void annexCode() {
     } else {
       f.ACC_CALIBRATED = 1;//大角度倾斜后需要重新校准
     }
+
+
+
+
   }
 
 
@@ -261,13 +259,13 @@ void setup() {
   
   readGlobalSet();
   readEEPROM();                               // check current setting integrity 
-  blinkLED(2,40,1);       
+  //blinkLED(2,40,1);       
   
   configureReceiver();						  // 配置接收机引脚
  
   initSensors();							  // 初始化IMU
   
-  GPS_set_pids();							  // 设置GPS的PID参数
+  //GPS_set_pids();							  // 设置GPS的PID参数
   previousTime = micros();
 
   //貌似是循环过程中动态校准，这个赋值好像需要在初始化传感器前面
@@ -376,20 +374,6 @@ if (currentTime > rcTime ) { // 50Hz
 	  
 	  
 	  
-	  static uint8_t GPSNavReset = 1;
-	  if (f.GPS_FIX && GPS_numSat >= 5 ) {		// 当前GPS卫星个数足够定点
-        if (abs(rcCommand[ROLL])< AP_MODE && abs(rcCommand[PITCH]) < AP_MODE) {
-          if (!f.GPS_HOLD_MODE) {
-            f.GPS_HOLD_MODE = 1;				// 提取出来只有定点模式
-            GPSNavReset = 0;					// 禁止重置导航参数
-			GPS_I2C_command(I2C_GPS_COMMAND_POSHOLD,0);
-          }
-        } 
-	  }else{
-        f.GPS_HOLD_MODE = 0;
-	  }
-	  
-	  
 	  
 	  
 }
@@ -406,9 +390,11 @@ else{
       case 2:
         taskOrder++;
         if (getEstimatedAltitude() !=0) break;
+	  /*
 	  case 3:
         taskOrder++;
 		if(GPS_Enable) GPS_NewData();  break;
+	  */
 }
 
 }
@@ -430,21 +416,6 @@ prop = min(max(abs(rcCommand[PITCH]),abs(rcCommand[ROLL])),500);
 
 
 
-// 如果当前卫星状态良好，进行HOLD定点并进行下面的运算
-if (f.GPS_HOLD_MODE) {
-  // 和北向组成直角三角形通过三角函数求两个直角边的长度
-  float sin_yaw_y = sin(att.heading*0.0174532925f);
-  float cos_yaw_x = cos(att.heading*0.0174532925f);
-	  
-  // 根据config.h文件当中的定义NAV_SLEW_RATE为30
-  nav_rated[LON]   += constrain(wrap_18000(nav[LON]-nav_rated[LON]),-NAV_SLEW_RATE,NAV_SLEW_RATE);
-  nav_rated[LAT]   += constrain(wrap_18000(nav[LAT]-nav_rated[LAT]),-NAV_SLEW_RATE,NAV_SLEW_RATE);
-  GPS_angle[ROLL]   = (nav_rated[LON]*cos_yaw_x - nav_rated[LAT]*sin_yaw_y) /10;
-  GPS_angle[PITCH]  = (nav_rated[LON]*sin_yaw_y + nav_rated[LAT]*cos_yaw_x) /10;
-}
-	  
-
-
 
 //控制  
  for(axis=0;axis<3;axis++) {
@@ -453,7 +424,7 @@ if (f.GPS_HOLD_MODE) {
       // 计算外环偏差，限制舵量指令（即为角度指令）到最大50度倾斜
       // 三部分组成：指令-当前解算姿态角+角度微调量
       // 暂时把GPS_angle[axis]去掉
-      errorAngle = constrain((rcCommand[axis]<<1)+ GPS_angle[axis],-500,+500) - att.angle[axis] + conf.angleTrim[axis]; //16位在此处足够存储 
+      errorAngle = constrain((rcCommand[axis]<<1),-500,+500) - att.angle[axis] + conf.angleTrim[axis]; //16位在此处足够存储 
       // 十个舵量代表1度
 	  AngleRateTmp = ((int32_t) errorAngle * conf.pid[PIDLEVEL].P8)>>4;//LEVEL外环系数 当前conf.pid[PIDLEVEL].P8 = 3 再除以16 相当于除以5.3  假设errorAngle为几十的量级（角度相差几度）得到十几
     }
@@ -491,12 +462,11 @@ if (f.GPS_HOLD_MODE) {
 	//求和计算PID输出
     axisPID[axis] =  PTerm + ITerm + DTerm;
 
-
-
+	
 	
 	mixTable();
+	//writeMotors();
 	writeMotorsServos();
-	
 }	
 
 

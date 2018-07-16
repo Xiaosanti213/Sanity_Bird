@@ -33,9 +33,6 @@
     <ClInclude Include="EEPROM.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GPS.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="IMU.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -43,9 +40,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Output.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Protocol.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RX.h">
@@ -60,15 +54,15 @@
     <ClInclude Include="types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Protocol.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Alarms.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="EEPROM.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="GPS.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="IMU.cpp">
@@ -80,9 +74,6 @@
     <ClCompile Include="Output.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Protocol.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="RX.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -90,6 +81,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Serial.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Protocol.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

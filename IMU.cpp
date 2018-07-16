@@ -25,8 +25,6 @@ void computeIMU () {
     gyroADCp[axis] =  imu.gyroADC[axis];
     // 存储当前数据
   timeInterleave=micros();
-
-  // 执行附加段代码
   annexCode();
   
   //这块时间控制十分精确
